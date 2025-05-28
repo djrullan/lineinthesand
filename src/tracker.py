@@ -5,11 +5,20 @@
 
 from typing import Callable, List, Optional, Tuple
 
+import os
 import cv2
 import numpy as np
 
+from datetime import datetime
 from sort import Sort
 from utils import check_direction, is_intersect
+
+## D Code: CSV log setup:
+LOG_FILE = "crossing_log.csv"
+if not os.path.exists(LOG_FILE):
+    with open(LOG_FILE, "w") as f:
+        f.write("timestamp,key,count\n")
+##
 
 ## D code: Logic for detecting ppl inside box
 def is_inside_box(center: Tuple[int, int], box: List[Tuple[int, int]]) -> bool:
@@ -49,7 +58,9 @@ class Tracker(object):
         self.memory = {}
         self.counter = {key: 0 for key in directions.keys()}
         self.directions = directions
-
+        ## D Code: Open log file for append
+        self.log_file = open(LOG_FILE, "a")
+        ##
         np.random.seed(2021)
         self.COLORS = np.random.randint(0, 255, size=(200, 3), dtype="uint8")
 
@@ -91,14 +102,24 @@ class Tracker(object):
         if not was_inside and is_inside:
             if 'inside' in self.counter:
                 self.counter['inside'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},inside,{self.counter['inside']}\n")
             if 'total' in self.counter:
                 self.counter['total'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},total,{self.counter['total']}\n")
+            print(ts, "Person inside, ALERT ALERT")
         # Exit (inside -> outside)
         elif was_inside and not is_inside:
             if 'outside' in self.counter:
                 self.counter['outside'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},outside,{self.counter['outside']}\n")
             if 'total' in self.counter:
                 self.counter['total'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},total,{self.counter['total']}\n")
+        self.log_file.flush()
 
     def _update_line_counts(self, center, center_prev):
         # For line mode, count crossings based on direction and intersection
@@ -109,8 +130,13 @@ class Tracker(object):
             ):
                 if key in self.counter:
                     self.counter[key] += 1
+                    ts = datetime.now().isoformat()
+                    self.log_file.write(f"{ts},{key},{self.counter[key]}\n")
                 if 'total' in self.counter:
                     self.counter['total'] += 1
+                    ts = datetime.now().isoformat()
+                    self.log_file.write(f"{ts},total,{self.counter['total']}\n")
+        self.log_file.flush()
         ##
         
 
