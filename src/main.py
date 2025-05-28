@@ -199,7 +199,17 @@ def main(
         start = time.time()
         dets = _detect_person(detect, frame, confidence, iou_threshold)
         end = time.time()
+        ##frame = tracker.update(frame, dets)
+
+        ## D code:
         frame = tracker.update(frame, dets)
+
+        ## Live Preview##
+        cv2.imshow("Live Detection", frame)
+        # press 'q' in that window to quit
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+        
 
         # Update tracker and draw bounding boxes in frame.
         # dets:  [xmin, ymin, xmax, ymax, score]
@@ -234,6 +244,7 @@ def main(
     if writer:
         writer.release()
     stream.release()
+    cv2.destroyAllWindows()
     print("Done!")
 
 
