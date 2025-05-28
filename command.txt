@@ -1,3 +1,11 @@
 python src/main.py --src ./data/olympic.mp4 \
                    --model ./models/yolov5s-fp16.tflite \
                    --directions="{'total': None, 'inside': 'bottom', 'outside': 'top'}"
+
+
+
+## For interactive ui, bounding box, with webam from computer
+python .\main.py --live --device 0 --model ..\models\yolov5n-fp16.tflite --use-box --directions "{'inside': None, 'outside': None, 'total': None}" --video-fmt mp4 --interactive-boundary
+
+## OG command for using eye in teh sky video
+python main.py --src ../data/townsquare.mp4 --model ../models/yolov5n-fp16.tflite --video-fmt mp4   
