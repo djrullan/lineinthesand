@@ -18,6 +18,9 @@ from utils import direction_config
 
 # D Code: Global to hold user clicks
 _boundary_points = []
+##Freehand drawing
+_freehand_points = []
+_drawing = False
 
 ## Examples
 ## Line Crossing: python main.py
@@ -31,6 +34,22 @@ def _mouse_callback(event, x, y, flags, param):
         # draw a small circle at the clicked point
         cv2.circle(param['frame'], (x, y), 5, (0, 255, 0), -1)
         cv2.imshow(param['window_name'], param['frame'])
+
+def _freehand_mouse(event, x, y, flags, param):
+    """Mouse callback to capture freehand strokes."""
+    global _freehand_points, _drawing
+    frame = param['frame']
+    win   = param['window_name']
+    if event == cv2.EVENT_LBUTTONDOWN:
+        _drawing = True
+        _freehand_points.append((x, y))
+    elif event == cv2.EVENT_MOUSEMOVE and _drawing:
+        _freehand_points.append((x, y))
+        pts = np.array(_freehand_points, dtype=np.int32).reshape(-1,1,2)
+        cv2.polylines(frame, [pts], False, (0, 255, 0), 2)
+        cv2.imshow(win, frame)
+    elif event == cv2.EVENT_LBUTTONUP:
+        _drawing = False
 
 
 def _get_interactive_boundary(src: str, use_box: bool, live: bool, device: int) -> Tuple[list, list]:
@@ -73,6 +92,39 @@ def _get_interactive_boundary(src: str, use_box: bool, live: bool, device: int) 
         return None, [p1, p2]
 ###
 
+
+def _get_freehand_boundary(src: str, live: bool, device: int) -> list:
+    """
+    Show a frame and let the user draw an arbitrary freehand polygon.
+    Finish by pressing ENTER.
+    Returns:
+        polygon: List of (x,y) points in drawing order.
+    """
+    # grab one frame
+    cap = cv2.VideoCapture(device) if live else cv2.VideoCapture(src)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise RuntimeError("Failed to grab setup frame for freehand ROI")
+
+    win = "Draw ROI – press ENTER to finish"
+    clone = frame.copy()
+    cv2.namedWindow(win)
+    cv2.imshow(win, clone)
+
+    # reset and bind
+    global _freehand_points, _drawing
+    _freehand_points = []
+    _drawing = False
+    cv2.setMouseCallback(win, _freehand_mouse, {'frame': clone, 'window_name': win})
+
+    # wait for ENTER (keycode 13)
+    while True:
+        if cv2.waitKey(1) & 0xFF == 13:
+            break
+    cv2.destroyWindow(win)
+    return list(_freehand_points)
+##
 
 def _detect_person(
     detect: Detect,
@@ -122,6 +174,7 @@ def main(
     box: list,
     border: list,
     interactive_boundary: bool,
+    interactive_freehand: bool,
     live: bool,
     device: int,
     ##
@@ -145,7 +198,13 @@ def main(
         iou_threshold (float): IoU threshold for NMS.
     """
 
-    if interactive_boundary:
+    polygon = None
+    if interactive_freehand:
+        # freehand ROI
+        polygon = _get_freehand_boundary(src, live, device)
+        box = None
+        border = None
+    elif interactive_boundary:
         # Clear any prior clicks
         global _boundary_points
         _boundary_points = []
@@ -171,7 +230,7 @@ def main(
     ##   tracker = Tracker(box=None, border=border, use_box=False, directions=directions)
     
     ## Commeted out above for interactive UI
-    tracker = Tracker(directions=directions, box=box, border=border, use_box=use_box)
+    tracker = Tracker(directions=directions, box=box, border=border, polygon=polygon, use_box=use_box)
     ## 
 
     detect = Detect(model, confidence)
@@ -263,6 +322,7 @@ if __name__ == "__main__":
     parser.add_argument("--use-box", action="store_true", help="Use bounding box instead of line")
     parser.add_argument("--box", type=eval, default=[(50,50),(200,200)], help="Bounding box as [(x1,y1),(x2,y2)]")
     parser.add_argument("--border", type=eval, default=[(0,180),(640,180)], help="Line border as [(x1,y1),(x2,y2)]")
+    parser.add_argument("--interactive-freehand", action="store_true", help="Draw an arbitrary freehand ROI before processing")
     parser.add_argument("--interactive-boundary", action="store_true", help="Enable interactive drawing of line/box before processing loop")
     parser.add_argument('--live', action='store_true', help='Use live camera feed instead of video file')
     parser.add_argument('--device', type=int, default=0, help='Camera device index for live mode')
