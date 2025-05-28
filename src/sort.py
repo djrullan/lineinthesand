@@ -218,10 +218,22 @@ class Sort(object):
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks)
 
         # update matched trackers with assigned detections
-        for t, trk in enumerate(self.trackers):
+        """for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]
                 trk.update(dets[d, :][0])
+        """
+        # D Code:
+        for t, trk in enumerate(self.trackers):
+            if t not in unmatched_trks:
+                # find all matched rows for this tracker index
+                matches_t = matched[matched[:, 1] == t]
+                if matches_t.shape[0] > 0:
+                    # take the first matched detection index
+                    d = int(matches_t[0, 0])
+                    # update using the full detection vector [x1,y1,x2,y2,score]
+                    trk.update(dets[d, :])
+        ##
 
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:

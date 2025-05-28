@@ -1,0 +1,3 @@
+python src/main.py --src ./data/olympic.mp4 \
+                   --model ./models/yolov5s-fp16.tflite \
+                   --directions="{'total': None, 'inside': 'bottom', 'outside': 'top'}"

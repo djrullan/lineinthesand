@@ -53,6 +53,24 @@ class VideoStream(BaseStream):
         except:
             return None
 
+## D Code: Class for live camera
+class CameraStream(BaseStream):
+    """Live camera stream by device index."""
+    def __init__(self, device_index: int = 0):
+        self.cap = cv2.VideoCapture(device_index)
+
+    def next(self) -> Tuple[bool, Any]:
+        if_finish, frame = self.cap.read()
+        return if_finish, frame
+
+    def release(self):
+        self.cap.release()
+
+    def __len__(self):
+        # Live stream: length unknown
+        return None
+###
+
 
 class ImageFileStream(BaseStream):
     """Image file stream.
