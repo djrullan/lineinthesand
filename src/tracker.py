@@ -33,7 +33,7 @@ class Tracker(object):
         #D Code: 
         box: Optional[List[Tuple[int]]] = None,
         border: Optional[List[Tuple[int]]] = None,
-        
+        polygon: Optional[List[Tuple[int,int]]] = None,
         ##
         count_callback: Optional[Callable] = None,
         use_box: bool = False,
@@ -51,6 +51,7 @@ class Tracker(object):
         ## D Code: initalize
         self.box = box
         self.border = border
+        self.polygon = polygon
         self.use_box = use_box
         ##
 
@@ -138,8 +139,35 @@ class Tracker(object):
                     self.log_file.write(f"{ts},total,{self.counter['total']}\n")
         self.log_file.flush()
         ##
-        
+    
+    def _update_polygon_counts(self, center, prev_center):
+        # true if point is inside the drawn polygon
+        pts = np.array(self.polygon, dtype=np.int32)
+        inside_prev = cv2.pointPolygonTest(pts, prev_center, False) >= 0
+        inside_now  = cv2.pointPolygonTest(pts, center, False) >= 0
 
+        # Entry
+        if not inside_prev and inside_now:
+            if 'inside' in self.counter:
+                self.counter['inside'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},inside,{self.counter['inside']}\n")
+            if 'total' in self.counter:
+                self.counter['total'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},total,{self.counter['total']}\n")
+            print(ts, "Person inside, ALERT ALERT")
+        # Exit (inside -> outside)
+        elif inside_prev and not inside_now:
+            if 'outside' in self.counter:
+                self.counter['outside'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},outside,{self.counter['outside']}\n")
+            if 'total' in self.counter:
+                self.counter['total'] += 1
+                ts = datetime.now().isoformat()
+                self.log_file.write(f"{ts},total,{self.counter['total']}\n")
+        self.log_file.flush()
 
     def update(self, frame: np.ndarray, dets: np.ndarray) -> np.ndarray:
         """Update tracker and draw bounding box in a frame.
@@ -166,7 +194,10 @@ class Tracker(object):
 
         ## D code:
         # Draw detection region
-        if self.use_box:
+        if self.polygon is not None:
+            pts = np.array(self.polygon, np.int32).reshape(-1,1,2)
+            cv2.polylines(frame, [pts], True, (10,255,0), 3)
+        elif self.use_box:
             cv2.rectangle(frame, self.box[0], self.box[1], (10, 255, 0), 3)
         else:
             cv2.line(frame, self.border[0], self.border[1], (10, 255, 0), 3)
@@ -184,7 +215,9 @@ class Tracker(object):
                 prev_center = (int((pbox[0] + pbox[2]) / 2), int((pbox[1] + pbox[3]) / 2))
                 cv2.line(frame, center, prev_center, color, 2)
                 # Update counts
-                if self.use_box:
+                if self.polygon is not None:
+                   self._update_polygon_counts(center, prev_center)
+                elif self.use_box:
                     self._update_box_counts(center, prev_center)
                 else:
                     self._update_line_counts(center, prev_center)
