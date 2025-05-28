@@ -12,9 +12,66 @@ import cv2
 import numpy as np
 
 from detect import Detect
-from streams import VideoStream
+from streams import VideoStream, CameraStream
 from tracker import Tracker
 from utils import direction_config
+
+# D Code: Global to hold user clicks
+_boundary_points = []
+
+## Examples
+## Line Crossing: python main.py
+## Box entry: python main.py --use-box
+
+def _mouse_callback(event, x, y, flags, param):
+    """Mouse callback to record two points."""
+    global _boundary_points
+    if event == cv2.EVENT_LBUTTONDOWN and len(_boundary_points) < 2:
+        _boundary_points.append((x, y))
+        # draw a small circle at the clicked point
+        cv2.circle(param['frame'], (x, y), 5, (0, 255, 0), -1)
+        cv2.imshow(param['window_name'], param['frame'])
+
+
+def _get_interactive_boundary(src: str, use_box: bool, live: bool, device: int) -> Tuple[list, list]:
+    """
+    Open a single frame from the source and let user click two points
+    to define a border (line) or box (top-left, bottom-right).
+    Returns:
+        box: List of two (x,y) points or None
+        border: List of two (x,y) points or None
+    """
+    # Read a single frame from the source
+    if live:
+        cap = cv2.VideoCapture(device)
+    else:
+        cap = cv2.VideoCapture(src)
+    ret, frame = cap.read()
+    cap.release()
+    if not ret:
+        raise RuntimeError(f"Failed to read frame from {'camera' if live else src}")
+
+    window_name = "Define Boundary"
+    clone = frame.copy()
+    cv2.namedWindow(window_name)
+    cv2.imshow(window_name, clone)
+
+    # set mouse callback with frame in param
+    cv2.setMouseCallback(window_name, _mouse_callback, {'frame': clone, 'window_name': window_name})
+    print(f"Click two points to define the {'box' if use_box else 'line'}. Press any key after selecting.")
+
+    # Wait until two points have been clicked
+    while len(_boundary_points) < 2:
+        cv2.waitKey(1)
+    cv2.waitKey(500)
+    cv2.destroyWindow(window_name)
+
+    p1, p2 = _boundary_points[0], _boundary_points[1]
+    if use_box:
+        return [p1, p2], None
+    else:
+        return None, [p1, p2]
+###
 
 
 def _detect_person(
@@ -60,7 +117,24 @@ def main(
     confidence: float,
     iou_threshold: float,
     directions: Dict[str, Tuple[bool]],
+    ## D Code: Code for flagg
+    use_box: bool,
+    box: list,
+    border: list,
+    interactive_boundary: bool,
+    live: bool,
+    device: int,
+    ##
 ):
+    # D code Select stream source
+    if live:
+        stream = CameraStream(device)
+        print(f"Using live camera stream (device {device})")
+    else:
+        stream = VideoStream(src)
+        print(f"Using video file: {src}")
+    
+
     """Track human objects and count the number of human.
 
     Args:
@@ -70,57 +144,95 @@ def main(
         confidence (float): Confidence threshold.
         iou_threshold (float): IoU threshold for NMS.
     """
+
+    if interactive_boundary:
+        # Clear any prior clicks
+        global _boundary_points
+        _boundary_points = []
+        # Get box or border interactively
+        box, border = _get_interactive_boundary(src, use_box, live, device)
+
+    
     if not os.path.exists(dest):
-        os.mkdir(dest)
+        os.makedirs(dest, exist_ok=True)
 
     # The line to count.
-    border = [(0, 500), (1920, 500)]
-    directions = {key: direction_config.get(d_str) for key, d_str in directions.items()}
-    tracker = Tracker(border, directions)
+    
+    #border = [(0, 500), (1920, 500)]
+    #box = [(800, 400), (1100, 600)]
+
+    #directions = {key: direction_config.get(d_str) for key, d_str in directions.items()}
+    directions = {k: direction_config.get(v) for k, v in directions.items()}
+
+    ## D code: Initialize tracker based on flag
+    ##if use_box:
+    ##    tracker = Tracker(box=box, border=None, use_box=True, directions=directions)
+    ##else:
+    ##   tracker = Tracker(box=None, border=border, use_box=False, directions=directions)
+    
+    ## Commeted out above for interactive UI
+    tracker = Tracker(directions=directions, box=box, border=border, use_box=use_box)
+    ## 
+
     detect = Detect(model, confidence)
-    stream = VideoStream(src)
+    ##stream = VideoStream(src)
     writer = None
 
-    total_frames = len(stream)
-    if total_frames:
-        print(f"Total frames: {len(stream)}")
+    # D Code:
+    try:
+        total_frames = len(stream)
+    except TypeError:
+        total_frames = None
+    if total_frames is not None:
+        print(f"Total frames: {total_frames}")
+   ##
+
 
     while True:
         # Read the next frame from stream.
         is_finish, frame = stream.next()
-
+        # height, width, _ = frame.shape
+        # print(f"Frame dimensions: Width = {width}, Height = {height}")
         if not is_finish:
             break
 
         start = time.time()
         dets = _detect_person(detect, frame, confidence, iou_threshold)
         end = time.time()
+        frame = tracker.update(frame, dets)
 
         # Update tracker and draw bounding boxes in frame.
         # dets:  [xmin, ymin, xmax, ymax, score]
-        frame = tracker.update(frame, dets)
+        ## D code: Test to see if frame is correct size
+        print("Frame size:", frame.shape)   # -> (H, W, _)
 
         # Executed only first time.
         if writer is None:
             # Initialize video writer.
-            model_name = os.path.basename(model).split(".")[0]
-            video_name = os.path.basename(src).split(".")[0]
-            codecs = {"mp4": "MP4V", "avi": "MJPG"}
-            basename = f"{video_name}_{model_name}"
+            model_name = os.path.basename(model).split(".")[0] 
+            video_name = os.path.basename(src).split(".")[0] if not live else 'camera'
+            
+            # add timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            basename = f"{video_name}_{model_name}_{timestamp}"
+            
             output_video = os.path.join(dest, f"{basename}.{video_fmt}")
-            fourcc = cv2.VideoWriter_fourcc(*codecs[video_fmt])
+            fourcc = cv2.VideoWriter_fourcc(*{"mp4": "MP4V", "avi": "MJPG"}[video_fmt])
             writer = cv2.VideoWriter(output_video, fourcc, 30, (frame.shape[1], frame.shape[0]), True)
 
             # Estimate total time.
             second_per_frame = end - start
             print(f"Computation time per a frame: {second_per_frame:.4f} seconds")
-            print(f"Estimated total time: {second_per_frame * total_frames:.4f}")
+            if total_frames is not None:
+                print(f"Estimated total time: {second_per_frame * total_frames:.4f}")
 
         # Save frame as an image and video.
         cv2.imwrite(os.path.join(dest, f"{basename}.jpg"), frame)
         writer.write(frame)
 
-    writer.release()
+    if writer:
+        writer.release()
     stream.release()
     print("Done!")
 
@@ -135,6 +247,15 @@ if __name__ == "__main__":
     parser.add_argument("--confidence", type=float, default=0.2, help="Confidence threshold.")
     parser.add_argument("--iou-threshold", type=float, default=0.2, help="IoU threshold for NMS.")
     parser.add_argument("--directions", default={"total": None}, type=eval, help="Directions")
+
+    ## D code: New arguments for logic switching
+    parser.add_argument("--use-box", action="store_true", help="Use bounding box instead of line")
+    parser.add_argument("--box", type=eval, default=[(50,50),(200,200)], help="Bounding box as [(x1,y1),(x2,y2)]")
+    parser.add_argument("--border", type=eval, default=[(0,180),(640,180)], help="Line border as [(x1,y1),(x2,y2)]")
+    parser.add_argument("--interactive-boundary", action="store_true", help="Enable interactive drawing of line/box before processing loop")
+    parser.add_argument('--live', action='store_true', help='Use live camera feed instead of video file')
+    parser.add_argument('--device', type=int, default=0, help='Camera device index for live mode')
+    ##
 
     args = vars(parser.parse_args())
     main(**args)

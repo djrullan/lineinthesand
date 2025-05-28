@@ -7,7 +7,8 @@ from typing import Tuple
 
 import cv2
 import numpy as np
-from tflite_runtime.interpreter import Interpreter
+from tensorflow.lite.python.interpreter import Interpreter
+
 
 
 class Detect(object):

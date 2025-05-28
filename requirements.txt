@@ -3,10 +3,11 @@ pytest-mock
 black
 pre-commit
 
-numpy>=1.18.5
+numpy==1.18.5
 opencv-python>=4.1.2
 numba
-sklearn
+scikit-learn
+#sklearn
 filterpy
 imutils
 lap
