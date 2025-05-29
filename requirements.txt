@@ -3,7 +3,8 @@ pytest-mock
 black
 pre-commit
 
-numpy==1.18.5
+#numpy==2.1.3
+numpy
 opencv-python>=4.1.2
 numba
 scikit-learn
@@ -11,3 +12,6 @@ scikit-learn
 filterpy
 imutils
 lap
+
+tensorflow
+picamera
