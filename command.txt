@@ -4,7 +4,7 @@ pip install -r reqs.text
 python src/main.py --live --device 0 --model models/yolov5n-fp16.tflite --use-box --directions "{'inside': None, 'outside': None, 'total': None}" --video-fmt mp4 --interactive-freehand
 
 
-
+#-----------------------------------------------------
 python src/main.py --src ./data/olympic.mp4 \
                    --model ./models/yolov5s-fp16.tflite \
                    --directions="{'total': None, 'inside': 'bottom', 'outside': 'top'}"

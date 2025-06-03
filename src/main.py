@@ -323,12 +323,10 @@ def main(
             stream = VideoStream(src)
         
         frame_display_count = 0
-        # --- MODIFIED Line 338 (approx) ---
         if isinstance(stream, VideoStream):
             total_frames_from_stream = stream.total_frames
         else: # For CameraStream or other types where total frames isn't applicable/known beforehand
             total_frames_from_stream = 0
-        # --- END MODIFICATION ---
 
         while True:
             is_running, frame = stream.next()
@@ -383,9 +381,7 @@ def main(
         if writer:
             writer.release()
             print("Video writer released.")
-        # --- MODIFIED Line 394 (approx) ---
         if stream is not None: # Explicitly check if stream object exists
-        # --- END MODIFICATION ---
             stream.release()
             print("Video stream released.")
         cv2.destroyAllWindows()
