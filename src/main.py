@@ -21,8 +21,8 @@ from utils import direction_config
 # --- Globals for Mouse Interaction ---
 _boundary_points: List[Tuple[int, int]] = [] # For line/box boundary
 
-_freehand_points: List[Tuple[int, int]] = []  # Holds points for the segment currently being drawn
-_drawing: bool = False       # True if mouse button is down and drawing a segment
+_freehand_points: List[Tuple[int, int]] = []    # Holds points for the segment currently being drawn
+_drawing: bool = False      # True if mouse button is down and drawing a segment
 _all_freehand_segments: List[List[Tuple[int, int]]] = [] # Holds all completed freehand segments
 
 _picam2_stream_instance: Picamera2 = None # Global Picamera2 instance for main streaming
@@ -124,9 +124,9 @@ def _get_freehand_boundary_on_static_frame(src_path: str, live_mode: bool, camer
         cv2.imshow(win_name, display_frame)
         key = cv2.waitKey(20) & 0xFF 
         
-        if key == 13:  # ENTER
+        if key == 13:   # ENTER
             break
-        elif key == 27:  # ESC
+        elif key == 27:   # ESC
             _all_freehand_segments = [] 
             print("Freehand drawing cancelled.")
             break
@@ -329,6 +329,8 @@ def main(
             total_frames_from_stream = 0
 
         while True:
+            frame_start_time = time.time() # Start time for the entire frame processing
+
             is_running, frame = stream.next()
             if not is_running:
                 break
@@ -337,10 +339,12 @@ def main(
             if total_frames_from_stream > 0: # Only print progress if total_frames is known
                 print(f"Processing frame {frame_display_count}/{total_frames_from_stream}", end='\r')
 
-            start_time = time.time()
+            # --- Inference Time Measurement ---
+            inference_start_time = time.time()
             dets = _detect_person(detect_obj, frame, confidence, iou_threshold)
             frame = tracker.update(frame, dets) 
-            end_time = time.time()
+            inference_end_time = time.time()
+            inference_time = inference_end_time - inference_start_time
             
             if polygon:
                 if len(polygon) > 1: 
@@ -350,9 +354,15 @@ def main(
             elif final_border_for_tracker:
                 cv2.line(frame, final_border_for_tracker[0], final_border_for_tracker[1], (0,0,255), 2)
 
-            cv2.imshow("Object Detection and Tracking", frame)
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+            # --- Display Time Measurement ---
+            display_start_time = time.time()
+            #cv2.imshow("Object Detection and Tracking", frame)
+            #key = cv2.waitKey(1) & 0xFF 
+            display_end_time = time.time()
+            display_time = display_end_time - display_start_time
+
+            #if key == ord('q'):
+            #    break
             
             if writer is None: 
                 model_name_base = os.path.basename(model).split(".")[0]
@@ -366,11 +376,13 @@ def main(
                 writer = cv2.VideoWriter(output_video_path, fourcc, 25, (frame.shape[1], frame.shape[0]), True) 
                 print(f"\nOutput video saving to: {output_video_path}")
                 
-                proc_time_per_frame = end_time - start_time
-                print(f"Processing time per frame: {proc_time_per_frame:.4f} seconds")
-                if total_frames_from_stream > 0: # Check if known
-                    print(f"Estimated total processing time: {proc_time_per_frame * total_frames_from_stream:.2f} seconds")
-        
+            writer.write(frame) # Write the frame to the output video
+
+            frame_end_time = time.time() # End time for the entire frame processing
+            total_frame_time = frame_end_time - frame_start_time
+
+            print(f"Frame {frame_display_count}: Total Frame Time: {total_frame_time:.4f}s | Inference Time: {inference_time:.4f}s | Display Time: {display_time:.4f}s")
+    
         if total_frames_from_stream > 0 : print() 
 
     except Exception as e:

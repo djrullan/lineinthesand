@@ -3,6 +3,10 @@ source 3env/bin/activate
 pip install -r reqs.text
 python src/main.py --live --device 0 --model models/yolov5n-fp16.tflite --use-box --directions "{'inside': None, 'outside': None, 'total': None}" --video-fmt mp4 --interactive-freehand
 
+TODO: QUANTIZE WITH VIDEO.MP4, LOOK INTO FASTER VIDEO RECORD/PLAY 50FPS, BOX, MAYBE REID
+
+libcamera-vid --level 4.2 --framerate 50 --width 1920 --height 1080 --codec libav -o video.mp4 --frames 1800 --denoise cdn_off -n
+
 
 #-----------------------------------------------------
 python src/main.py --src ./data/olympic.mp4 \
