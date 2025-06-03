@@ -327,7 +327,8 @@ def main(
             total_frames_from_stream = stream.total_frames
         else: # For CameraStream or other types where total frames isn't applicable/known beforehand
             total_frames_from_stream = 0
-
+        initial_start_time = time.time()
+        
         while True:
             frame_start_time = time.time() # Start time for the entire frame processing
 
@@ -380,8 +381,8 @@ def main(
 
             frame_end_time = time.time() # End time for the entire frame processing
             total_frame_time = frame_end_time - frame_start_time
-
-            print(f"Frame {frame_display_count}: Total Frame Time: {total_frame_time:.4f}s | Inference Time: {inference_time:.4f}s | Display Time: {display_time:.4f}s")
+            total_since_start = frame_end_time - initial_start_time
+            print(f"Frame {frame_display_count}: totalFrame: {total_frame_time:.4f}s | Inference: {inference_time:.4f}s | Display: {display_time:.4f}s | Since Start: {total_since_start} | FPS: {frame_display_count/total_since_start}")
     
         if total_frames_from_stream > 0 : print() 
 
