@@ -3,7 +3,7 @@ import numpy as np
 import os # For path checks
 
 # Path to your SavedModel directory
-saved_model_dir = "../../yolov5/yolov5n_saved_model"
+saved_model_dir = "yolov5n_saved_model"
 
 # Function to get model size
 def get_model_size(file_path):
@@ -47,7 +47,7 @@ else:
     converter_dr.optimizations = [tf.lite.Optimize.DEFAULT] # This enables dynamic range quantization
     tflite_model_dr = converter_dr.convert()
 
-    dr_output_path = "yolov5n_dr_quant.tflite"
+    dr_output_path = "yolov5n_repeat.tflite"
     with open(dr_output_path, "wb") as f:
         f.write(tflite_model_dr)
     print(f"Dynamic Range Quantized TFLite model saved to: {dr_output_path}")

@@ -7,11 +7,22 @@
 import argparse
 import os
 import time
+import threading
+import queue
 from typing import Dict, Tuple, List
 
 import cv2
 import numpy as np
-from picamera2 import Picamera2 # Import Picamera2 for camera handling
+from picamera2 import Picamera2
+
+# Import Flask for HTTP streaming
+from flask import Flask, Response
+import logging
+
+# Disable default Flask logging to keep terminal cleaner
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
+
 
 # Assuming these are in relative paths or Python path
 from detect import Detect
@@ -21,11 +32,38 @@ from utils import direction_config
 # --- Globals for Mouse Interaction ---
 _boundary_points: List[Tuple[int, int]] = [] # For line/box boundary
 
-_freehand_points: List[Tuple[int, int]] = []    # Holds points for the segment currently being drawn
+_freehand_points: List[Tuple[int, int]] = []        # Holds points for the segment currently being drawn
 _drawing: bool = False      # True if mouse button is down and drawing a segment
 _all_freehand_segments: List[List[Tuple[int, int]]] = [] # Holds all completed freehand segments
 
 _picam2_stream_instance: Picamera2 = None # Global Picamera2 instance for main streaming
+
+# --- Global for frame sharing with Flask ---
+_latest_processed_frame: np.ndarray = None
+_frame_lock = threading.Lock() # To safely update/read _latest_processed_frame
+
+# --- Flask App for Video Streaming ---
+app = Flask(__name__)
+
+def generate_mjpeg_stream():
+    """Generates an MJPEG stream from the latest processed frame."""
+    while True:
+        with _frame_lock:
+            if _latest_processed_frame is not None:
+                # Encode the frame as JPEG
+                ret, jpeg = cv2.imencode('.jpg', _latest_processed_frame)
+                if not ret:
+                    continue
+                frame_bytes = jpeg.tobytes()
+                
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+        time.sleep(0.03) # Adjust sleep to control stream FPS (e.g., ~30 FPS)
+
+@app.route('/video_feed')
+def video_feed():
+    """Endpoint to provide the MJPEG video feed."""
+    return Response(generate_mjpeg_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 # --- Mouse Callback for Line/Box Boundary ---
 def _mouse_callback(event, x, y, flags, param):
@@ -169,11 +207,11 @@ def _get_interactive_boundary(src: str, use_box: bool, live: bool, device: int) 
 
 # --- CameraStream Class for Main Video Processing ---
 class CameraStream:
-    def __init__(self, device_index=0, resolution=(640, 480), framerate=15):
+    def __init__(self, device_index=0, resolution=(640, 480), framerate=60):
         global _picam2_stream_instance
         self.resolution = resolution
         self.framerate = framerate
-        print(f"Initializing CameraStream with Picamera2 (device {device_index})...")
+        print(f"Initializing CameraStream with Picamera2 (device {device_index})....")
         
         if _picam2_stream_instance is None:
             _picam2_stream_instance = Picamera2(camera_num=device_index)
@@ -211,9 +249,6 @@ class CameraStream:
             _picam2_stream_instance = None
             print("CameraStream's Picamera2 instance released.")
 
-    # No __len__ method, as live streams don't have a fixed length known in advance.
-    # An instance of CameraStream will evaluate to True in boolean contexts by default.
-
 # --- VideoStream Class for Main Video Processing from File ---
 class VideoStream:
     def __init__(self, src_path):
@@ -223,7 +258,8 @@ class VideoStream:
         self.src_path = src_path
         self._frame_count = 0
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        print(f"VideoStream initialized for {src_path}, {self.total_frames} frames.")
+        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        print(f"VideoStream initialized for {src_path}, {self.total_frames} frames at {self.fps} FPS.")
 
     def next(self):
         ret, frame = self.cap.read()
@@ -241,39 +277,142 @@ class VideoStream:
         return self.total_frames
 
 # --- Object Detection Function ---
-def _detect_person(detect_obj: Detect, frame: np.ndarray, confidence_thresh: float, iou_thresh: float) -> np.ndarray:
-    #trying to get fullint quantize to work
-    confidence_thresh = 0.01
+def detect_person(detect_obj: Detect, frame: np.ndarray, confidence_thresh: float, iou_thresh: float) -> np.ndarray:
+    # Get detections from the model
+    boxes, scores, class_idx = detect_obj.detect(frame, box_type="xywh")  # Ensure we get xywh format
     
-    boxes, scores, class_idx = detect_obj.detect(frame)
+    print(f"Raw detections: {len(boxes)} boxes")
+    print(f"Scores: {scores}")
+    print(f"Classes: {class_idx}")
+    print(f"Box format before scaling: {boxes[:3] if len(boxes) > 0 else 'No boxes'}")
+    
     if boxes is None or len(boxes) == 0:
+        print("No boxes returned from detection")
         return np.empty((0, 5))
-
-    nms_indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), confidence_thresh, iou_thresh)
     
-    if isinstance(nms_indices, tuple) and len(nms_indices) == 0: 
+    # Get original frame dimensions
+    H, W = frame.shape[:2]
+    print(f"Frame dimensions: {W}x{H}")
+    
+    # Scale boxes from model input size (640x640) to original frame size
+    # Boxes are currently in xywh format normalized to [0, 640]
+    scale_x = W / detect_obj.width   # Scale factor for x coordinates
+    scale_y = H / detect_obj.height  # Scale factor for y coordinates
+    
+    # Scale the boxes to original frame coordinates
+    boxes_scaled = boxes.copy()
+    boxes_scaled[:, 0] *= scale_x  # x center
+    boxes_scaled[:, 1] *= scale_y  # y center  
+    boxes_scaled[:, 2] *= scale_x  # width
+    boxes_scaled[:, 3] *= scale_y  # height
+    
+    print(f"Box format after scaling: {boxes_scaled[:3] if len(boxes_scaled) > 0 else 'No boxes'}")
+    
+    # Convert to xyxy format for NMS
+    boxes_xyxy = detect_obj.to_xyxy(boxes_scaled)
+    print(f"Box format after xyxy conversion: {boxes_xyxy[:3] if len(boxes_xyxy) > 0 else 'No boxes'}")
+    
+    # Apply NMS with the confidence threshold from the parameter (not hardcoded 0.01)
+    nms_indices = cv2.dnn.NMSBoxes(boxes_xyxy.tolist(), scores.tolist(), confidence_thresh, iou_thresh)
+    
+    print(f"NMS indices type: {type(nms_indices)}")
+    print(f"NMS indices: {nms_indices}")
+    
+    if isinstance(nms_indices, tuple) and len(nms_indices) == 0:
+        print("NMS returned empty tuple")
         return np.empty((0, 5))
     if hasattr(nms_indices, 'flatten'):
         nms_indices = nms_indices.flatten()
     
     if len(nms_indices) == 0:
-        return np.empty((0,5))
-
-    boxes = boxes[nms_indices]
+        print("No indices after NMS")
+        return np.empty((0, 5))
+    
+    # Filter by NMS results
+    boxes_xyxy = boxes_xyxy[nms_indices]
     scores = scores[nms_indices]
     class_idx = class_idx[nms_indices]
-
-    person_idx = np.where(class_idx == 0)[0] 
+    
+    print(f"After NMS: {len(boxes_xyxy)} detections")
+    print(f"Classes after NMS: {class_idx}")
+    
+    # Filter for person class (class 0)
+    person_idx = np.where(class_idx == 0)[0]
+    print(f"Person detections found: {len(person_idx)}")
+    
     if len(person_idx) == 0:
-        return np.empty((0,5))
-        
-    boxes = boxes[person_idx]
-    scores = scores[person_idx]
-
-    H, W = frame.shape[:2]
-    boxes = detect_obj.to_xyxy(boxes) * np.array([W, H, W, H])
-    dets = np.concatenate([boxes.astype(int), scores.reshape(-1, 1)], axis=1)
+        print("No person detections found")
+        return np.empty((0, 5))
+    
+    # Get final person detections
+    boxes_final = boxes_xyxy[person_idx]
+    scores_final = scores[person_idx]
+    
+    print(f"Final person boxes: {boxes_final}")
+    print(f"Final person scores: {scores_final}")
+    
+    # Ensure boxes are within frame bounds and have reasonable size
+    boxes_final[:, 0] = np.clip(boxes_final[:, 0], 0, W-1)  # x1
+    boxes_final[:, 1] = np.clip(boxes_final[:, 1], 0, H-1)  # y1  
+    boxes_final[:, 2] = np.clip(boxes_final[:, 2], 0, W-1)  # x2
+    boxes_final[:, 3] = np.clip(boxes_final[:, 3], 0, H-1)  # y2
+    
+    # Filter out boxes that are too small or invalid
+    box_widths = boxes_final[:, 2] - boxes_final[:, 0]
+    box_heights = boxes_final[:, 3] - boxes_final[:, 1]
+    valid_boxes = (box_widths > 10) & (box_heights > 10)  # Minimum 10 pixel size
+    
+    if not np.any(valid_boxes):
+        print("No valid boxes after size filtering")
+        return np.empty((0, 5))
+    
+    boxes_final = boxes_final[valid_boxes]
+    scores_final = scores_final[valid_boxes]
+    
+    print(f"Final valid boxes: {boxes_final}")
+    
+    # Combine boxes and scores
+    dets = np.concatenate([boxes_final.astype(int), scores_final.reshape(-1, 1)], axis=1)
+    
     return dets
+# --- Video Writer Thread Function ---
+def video_writer_thread_func(frame_queue: queue.Queue, stop_event: threading.Event, output_path: str, fourcc_code: int, fps: float, frame_size: Tuple[int, int]):
+    """
+    Function to be run in a separate thread for writing video frames to a file.
+    It consumes frames from a queue.
+    """
+    print(f"Video writer thread started. Saving to: {output_path}")
+    writer = None
+    try:
+        writer = cv2.VideoWriter(output_path, fourcc_code, fps, frame_size, True)
+        if not writer.isOpened():
+            print(f"Error: VideoWriter could not be opened at {output_path}")
+            return
+
+        while True:
+            try:
+                # Get frame from queue with a timeout to allow checking stop_event
+                # A small timeout prevents the thread from blocking indefinitely if the stop_event is set
+                frame = frame_queue.get(timeout=0.1) 
+                writer.write(frame)
+            except queue.Empty:
+                # If the queue is empty and the stop event is set, it means no more frames are coming
+                if stop_event.is_set():
+                    print("Video writer thread received stop signal and queue is empty. Exiting.")
+                    break
+                # If queue is empty but not stopping, continue waiting
+                continue
+            except Exception as e:
+                print(f"Error writing frame in video writer thread: {e}")
+                break # Exit on any write error
+
+    except Exception as e:
+        print(f"Error initializing VideoWriter in thread: {e}")
+    finally:
+        if writer:
+            writer.release()
+            print("Video writer thread released VideoWriter.")
+
 
 # --- Main Application Logic ---
 def main(
@@ -281,15 +420,21 @@ def main(
     confidence: float, iou_threshold: float, directions: Dict[str, Tuple[bool]],
     use_box: bool, box_coords: list, border_coords: list, 
     interactive_freehand: bool, interactive_boundary: bool,
-    live: bool, device: int):
+    live: bool, device: int,
+    flask_host: str, flask_port: int): # Added Flask host/port args
+
+    global _latest_processed_frame, _frame_lock
 
     polygon = None
     final_box_for_tracker = box_coords
     final_border_for_tracker = border_coords
     stream = None
-    writer = None
-
+    video_writer_thread = None # Initialize thread handle
+    frame_queue = queue.Queue() # Queue for passing frames to the writer thread
+    stop_event = threading.Event() # Event to signal the writer thread to stop
+    
     try:
+        # Interactive boundary definition still happens in the main thread
         if interactive_freehand:
             print("Starting interactive freehand ROI definition on a static frame...")
             polygon = _get_freehand_boundary_on_static_frame(src, live, device, "Draw Freehand ROI - ENTER to Finish")
@@ -326,19 +471,85 @@ def main(
             stream = VideoStream(src)
         
         frame_display_count = 0
+        total_frames_from_stream = 0
         if isinstance(stream, VideoStream):
             total_frames_from_stream = stream.total_frames
-        else: # For CameraStream or other types where total frames isn't applicable/known beforehand
-            total_frames_from_stream = 0
+        
         initial_start_time = time.time()
         
-        while True:
+        # Start the Flask server in a separate thread
+        print(f"Starting Flask streaming server on http://{flask_host}:{flask_port}/video_feed")
+        flask_thread = threading.Thread(target=app.run, kwargs={'host': flask_host, 'port': flask_port, 'debug': False})
+        flask_thread.daemon = True
+        flask_thread.start()
+        
+        # --- Capture and process the first frame to get video properties ---
+        is_running, frame = stream.next()
+        if not is_running:
+            print("Failed to get first frame from stream. Exiting.")
+            return # Exit if no first frame
+
+        # Get frame properties for video writer
+        frame_height, frame_width = frame.shape[:2]
+        frame_size = (frame_width, frame_height)
+        
+        # Determine FPS for the video writer
+        output_fps = 30 # Default FPS for output video
+        if live and isinstance(stream, CameraStream):
+            output_fps = stream.framerate
+        elif not live and isinstance(stream, VideoStream):
+            output_fps = stream.fps
+
+        # Setup output video path and FourCC code
+        model_name_base = os.path.basename(model).split(".")[0]
+        video_name_base = 'live_feed' if live else os.path.basename(src).split(".")[0]
+        timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+        output_filename_base = f"{video_name_base}_{model_name_base}_{timestamp_str}"
+        output_video_path = os.path.join(dest, f"{output_filename_base}.{video_fmt}")
+        
+        fourcc_map = {"mp4": "MP4V", "avi": "XVID"}
+        fourcc = cv2.VideoWriter_fourcc(*fourcc_map.get(video_fmt, "XVID"))
+
+        # Start the video writer thread
+        video_writer_thread = threading.Thread(
+            target=video_writer_thread_func, 
+            args=(frame_queue, stop_event, output_video_path, fourcc, output_fps, frame_size)
+        )
+        video_writer_thread.daemon = True # Allow the thread to exit when the main program exits
+        video_writer_thread.start()
+        print(f"\nOutput video saving to: {output_video_path}")
+
+        # Process the first frame and add to queue
+        frame_display_count += 1
+        inference_start_time = time.time()
+        dets = _detect_person(detect_obj, frame, confidence, iou_threshold)
+        processed_frame = tracker.update(frame, dets) 
+        inference_end_time = time.time()
+        inference_time = inference_end_time - inference_start_time
+        
+        if polygon:
+            if len(polygon) > 1: 
+                cv2.polylines(processed_frame, [np.array(polygon, dtype=np.int32).reshape(-1,1,2)], isClosed=True, color=(255,0,255), thickness=1)
+        elif final_box_for_tracker:
+            cv2.rectangle(processed_frame, final_box_for_tracker[0], final_box_for_tracker[1], (255,0,0), 2)
+        elif final_border_for_tracker:
+            cv2.line(processed_frame, final_border_for_tracker[0], final_border_for_tracker[1], (0,0,255), 2)
+
+        # Put the processed frame into the queue for the writer thread
+        frame_queue.put(processed_frame.copy())
+        
+        # Update the global frame for Flask streaming
+        with _frame_lock:
+            _latest_processed_frame = processed_frame.copy()
+
+        # Main processing loop
+        while True: 
             frame_start_time = time.time() # Start time for the entire frame processing
 
             is_running, frame = stream.next()
             if not is_running:
-                break
-            
+                break # End of stream or error
+
             frame_display_count += 1
             if total_frames_from_stream > 0: # Only print progress if total_frames is known
                 print(f"Processing frame {frame_display_count}/{total_frames_from_stream}", end='\r')
@@ -346,50 +557,31 @@ def main(
             # --- Inference Time Measurement ---
             inference_start_time = time.time()
             dets = _detect_person(detect_obj, frame, confidence, iou_threshold)
-            frame = tracker.update(frame, dets) 
+            processed_frame = tracker.update(frame, dets) 
             inference_end_time = time.time()
             inference_time = inference_end_time - inference_start_time
             
+            # Draw ROI on the processed frame
             if polygon:
                 if len(polygon) > 1: 
-                    cv2.polylines(frame, [np.array(polygon, dtype=np.int32).reshape(-1,1,2)], isClosed=True, color=(255,0,255), thickness=1)
+                    cv2.polylines(processed_frame, [np.array(polygon, dtype=np.int32).reshape(-1,1,2)], isClosed=True, color=(255,0,255), thickness=1)
             elif final_box_for_tracker:
-                cv2.rectangle(frame, final_box_for_tracker[0], final_box_for_tracker[1], (255,0,0), 2)
+                cv2.rectangle(processed_frame, final_box_for_tracker[0], final_box_for_tracker[1], (255,0,0), 2)
             elif final_border_for_tracker:
-                cv2.line(frame, final_border_for_tracker[0], final_border_for_tracker[1], (0,0,255), 2)
+                cv2.line(processed_frame, final_border_for_tracker[0], final_border_for_tracker[1], (0,0,255), 2)
 
-            # --- Display Time Measurement ---
-            display_start_time = time.time()
-            if frame_display_count % 10 == 0:  #this increases speed but makes video low quality
-                cv2.imshow("Object Detection and Tracking", frame)
-            key = cv2.waitKey(1) & 0xFF 
-            display_end_time = time.time()
-            display_time = display_end_time - display_start_time
-
-            if key == ord('q'):
-               break
-            write_start_time = time.time()
-            if writer is None: 
-                model_name_base = os.path.basename(model).split(".")[0]
-                video_name_base = 'live_feed' if live else os.path.basename(src).split(".")[0]
-                timestamp_str = time.strftime("%Y%m%d_%H%M%S")
-                output_filename_base = f"{video_name_base}_{model_name_base}_{timestamp_str}"
-                output_video_path = os.path.join(dest, f"{output_filename_base}.{video_fmt}")
-                
-                fourcc_map = {"mp4": "MP4V", "avi": "XVID"}
-                fourcc = cv2.VideoWriter_fourcc(*fourcc_map.get(video_fmt, "XVID"))
-                writer = cv2.VideoWriter(output_video_path, fourcc, 15, (frame.shape[1], frame.shape[0]), True) 
-                print(f"\nOutput video saving to: {output_video_path}")
-                
-            writer.write(frame) # Write the frame to the output video
+            # Put the processed frame into the queue for the writer thread
+            frame_queue.put(processed_frame.copy()) # Use .copy() to ensure thread safety
+            
+            # Update the global frame for Flask streaming
+            with _frame_lock:
+                _latest_processed_frame = processed_frame.copy()
             
             frame_end_time = time.time() # End time for the entire frame processing
-            write_time = frame_end_time - write_start_time
             total_frame_time = frame_end_time - frame_start_time
             total_since_start = frame_end_time - initial_start_time
             
-            # print(f"frame{frame_display_count}: time: {total_frame_time:.4f}s | infer: {inference_time:.4f}s | display: {display_time:.4f}s | write: {write_time:.4f} | overall: {total_since_start:.4f} | FPS: {frame_display_count/total_since_start:.4f}")
-            print(f"frame{frame_display_count}: time: {total_frame_time:.4f}s | infer: {inference_time:.4f}s | display: {display_time:.4f}s | write: {write_time:.4f} | overall: {total_since_start:.4f} | instantFPS: {1/total_frame_time:.4f}")
+            print(f"frame{frame_display_count}: time: {total_frame_time:.4f}s | infer: {inference_time:.4f}s | overall: {total_since_start:.4f} | instantFPS: {1/total_frame_time:.4f}")
     
         if total_frames_from_stream > 0 : print() 
 
@@ -398,14 +590,17 @@ def main(
         import traceback
         traceback.print_exc()
     finally:
-        if writer:
-            writer.release()
-            print("Video writer released.")
+        # Signal the writer thread to stop and wait for it to finish
+        if stop_event:
+            stop_event.set()
+        if video_writer_thread and video_writer_thread.is_alive():
+            video_writer_thread.join()
+            print("Video writer thread joined.")
+
         if stream is not None: # Explicitly check if stream object exists
             stream.release()
             print("Video stream released.")
-        cv2.destroyAllWindows()
-        print("All OpenCV windows destroyed.")
+        cv2.destroyAllWindows() # Ensures any remaining interactive windows are closed
         print("Application finished.")
 
 # --- Script Entry Point ---
@@ -416,7 +611,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", help="Path to TFLite model file.", default="./models/yolov5n6_float16.tflite")
     parser.add_argument("--video-fmt", help="Format of output video (mp4, avi).", choices=["mp4", "avi"], default="mp4")
     parser.add_argument("--confidence", type=float, default=0.3, help="Confidence threshold for detection.")
-    parser.add_argument("--iou-threshold", type=float, default=0.4, help="IoU threshold for NMS.")
+    parser.add_argument("--iou-threshold", type=float, default=0.3, help="IoU threshold for NMS.")
     parser.add_argument("--directions", default={"total": None}, type=eval, help="Tracker directions config e.g. '{\"total\":None}'")
 
     roi_group = parser.add_mutually_exclusive_group()
@@ -429,6 +624,10 @@ if __name__ == "__main__":
 
     parser.add_argument('--live', action='store_true', help='Use live camera feed (Picamera2).')
     parser.add_argument('--device', type=int, default=0, help='Camera device index for live mode.')
+
+    # New arguments for Flask server
+    parser.add_argument('--flask-host', type=str, default='0.0.0.0', help='Host IP for the Flask streaming server.')
+    parser.add_argument('--flask-port', type=int, default=5000, help='Port for the Flask streaming server.')
     
     args = parser.parse_args()
     
