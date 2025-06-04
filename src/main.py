@@ -277,104 +277,39 @@ class VideoStream:
         return self.total_frames
 
 # --- Object Detection Function ---
-def detect_person(detect_obj: Detect, frame: np.ndarray, confidence_thresh: float, iou_thresh: float) -> np.ndarray:
-    # Get detections from the model
-    boxes, scores, class_idx = detect_obj.detect(frame, box_type="xywh")  # Ensure we get xywh format
+def _detect_person(detect_obj: Detect, frame: np.ndarray, confidence_thresh: float, iou_thresh: float) -> np.ndarray:
+    confidence_thresh = 0.01 # This was set to 0.01 in your original code
     
-    print(f"Raw detections: {len(boxes)} boxes")
-    print(f"Scores: {scores}")
-    print(f"Classes: {class_idx}")
-    print(f"Box format before scaling: {boxes[:3] if len(boxes) > 0 else 'No boxes'}")
-    
+    boxes, scores, class_idx = detect_obj.detect(frame)
     if boxes is None or len(boxes) == 0:
-        print("No boxes returned from detection")
         return np.empty((0, 5))
+
+    nms_indices = cv2.dnn.NMSBoxes(boxes.tolist(), scores.tolist(), confidence_thresh, iou_thresh)
     
-    # Get original frame dimensions
-    H, W = frame.shape[:2]
-    print(f"Frame dimensions: {W}x{H}")
-    
-    # Scale boxes from model input size (640x640) to original frame size
-    # Boxes are currently in xywh format normalized to [0, 640]
-    scale_x = W / detect_obj.width   # Scale factor for x coordinates
-    scale_y = H / detect_obj.height  # Scale factor for y coordinates
-    
-    # Scale the boxes to original frame coordinates
-    boxes_scaled = boxes.copy()
-    boxes_scaled[:, 0] *= scale_x  # x center
-    boxes_scaled[:, 1] *= scale_y  # y center  
-    boxes_scaled[:, 2] *= scale_x  # width
-    boxes_scaled[:, 3] *= scale_y  # height
-    
-    print(f"Box format after scaling: {boxes_scaled[:3] if len(boxes_scaled) > 0 else 'No boxes'}")
-    
-    # Convert to xyxy format for NMS
-    boxes_xyxy = detect_obj.to_xyxy(boxes_scaled)
-    print(f"Box format after xyxy conversion: {boxes_xyxy[:3] if len(boxes_xyxy) > 0 else 'No boxes'}")
-    
-    # Apply NMS with the confidence threshold from the parameter (not hardcoded 0.01)
-    nms_indices = cv2.dnn.NMSBoxes(boxes_xyxy.tolist(), scores.tolist(), confidence_thresh, iou_thresh)
-    
-    print(f"NMS indices type: {type(nms_indices)}")
-    print(f"NMS indices: {nms_indices}")
-    
-    if isinstance(nms_indices, tuple) and len(nms_indices) == 0:
-        print("NMS returned empty tuple")
+    if isinstance(nms_indices, tuple) and len(nms_indices) == 0: 
         return np.empty((0, 5))
     if hasattr(nms_indices, 'flatten'):
         nms_indices = nms_indices.flatten()
     
     if len(nms_indices) == 0:
-        print("No indices after NMS")
-        return np.empty((0, 5))
-    
-    # Filter by NMS results
-    boxes_xyxy = boxes_xyxy[nms_indices]
+        return np.empty((0,5))
+
+    boxes = boxes[nms_indices]
     scores = scores[nms_indices]
     class_idx = class_idx[nms_indices]
-    
-    print(f"After NMS: {len(boxes_xyxy)} detections")
-    print(f"Classes after NMS: {class_idx}")
-    
-    # Filter for person class (class 0)
-    person_idx = np.where(class_idx == 0)[0]
-    print(f"Person detections found: {len(person_idx)}")
-    
+
+    person_idx = np.where(class_idx == 0)[0] 
     if len(person_idx) == 0:
-        print("No person detections found")
-        return np.empty((0, 5))
-    
-    # Get final person detections
-    boxes_final = boxes_xyxy[person_idx]
-    scores_final = scores[person_idx]
-    
-    print(f"Final person boxes: {boxes_final}")
-    print(f"Final person scores: {scores_final}")
-    
-    # Ensure boxes are within frame bounds and have reasonable size
-    boxes_final[:, 0] = np.clip(boxes_final[:, 0], 0, W-1)  # x1
-    boxes_final[:, 1] = np.clip(boxes_final[:, 1], 0, H-1)  # y1  
-    boxes_final[:, 2] = np.clip(boxes_final[:, 2], 0, W-1)  # x2
-    boxes_final[:, 3] = np.clip(boxes_final[:, 3], 0, H-1)  # y2
-    
-    # Filter out boxes that are too small or invalid
-    box_widths = boxes_final[:, 2] - boxes_final[:, 0]
-    box_heights = boxes_final[:, 3] - boxes_final[:, 1]
-    valid_boxes = (box_widths > 10) & (box_heights > 10)  # Minimum 10 pixel size
-    
-    if not np.any(valid_boxes):
-        print("No valid boxes after size filtering")
-        return np.empty((0, 5))
-    
-    boxes_final = boxes_final[valid_boxes]
-    scores_final = scores_final[valid_boxes]
-    
-    print(f"Final valid boxes: {boxes_final}")
-    
-    # Combine boxes and scores
-    dets = np.concatenate([boxes_final.astype(int), scores_final.reshape(-1, 1)], axis=1)
-    
+        return np.empty((0,5))
+        
+    boxes = boxes[person_idx]
+    scores = scores[person_idx]
+
+    H, W = frame.shape[:2]
+    boxes = detect_obj.to_xyxy(boxes) * np.array([W, H, W, H])
+    dets = np.concatenate([boxes.astype(int), scores.reshape(-1, 1)], axis=1)
     return dets
+
 # --- Video Writer Thread Function ---
 def video_writer_thread_func(frame_queue: queue.Queue, stop_event: threading.Event, output_path: str, fourcc_code: int, fps: float, frame_size: Tuple[int, int]):
     """
