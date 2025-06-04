@@ -32,8 +32,13 @@ def iou(bb_test, bb_gt):
     w = np.maximum(0.0, xx2 - xx1)
     h = np.maximum(0.0, yy2 - yy1)
     wh = w * h
+    # Add a small epsilon to the denominator to prevent division by zero
+    epsilon = 1e-6
     o = wh / (
-        (bb_test[2] - bb_test[0]) * (bb_test[3] - bb_test[1]) + (bb_gt[2] - bb_gt[0]) * (bb_gt[3] - bb_gt[1]) - wh
+        (bb_test[2] - bb_test[0]) * (bb_test[3] - bb_test[1])
+        + (bb_gt[2] - bb_gt[0]) * (bb_gt[3] - bb_gt[1])
+        - wh
+        + epsilon  # Added epsilon
     )
     return o
 
@@ -49,7 +54,9 @@ def convert_bbox_to_z(bbox):
     x = bbox[0] + w / 2.0
     y = bbox[1] + h / 2.0
     s = w * h  # scale is just area
-    r = w / float(h)
+    # Add a small epsilon to the denominator to prevent division by zero
+    epsilon = 1e-6
+    r = w / (float(h) + epsilon)  # Added epsilon
     return np.array([x, y, s, r]).reshape((4, 1))
 
 
@@ -58,8 +65,10 @@ def convert_x_to_bbox(x, score=None):
     Takes a bounding box in the centre form [x,y,s,r] and returns it in the form
       [x1,y1,x2,y2] where x1,y1 is the top left and x2,y2 is the bottom right
     """
-    w = np.sqrt(x[2] * x[3])
-    h = x[2] / w
+    # Add a small epsilon to prevent issues with sqrt(x[2]*x[3]) if it becomes zero or negative
+    epsilon = 1e-6
+    w = np.sqrt(np.maximum(0.0, x[2] * x[3])) # Ensured non-negative argument for sqrt
+    h = x[2] / (w + epsilon)  # Added epsilon
     if score == None:
         return np.array([x[0] - w / 2.0, x[1] - h / 2.0, x[0] + w / 2.0, x[1] + h / 2.0]).reshape((1, 4))
     else:
@@ -123,6 +132,8 @@ class KalmanBoxTracker(object):
         """
         Advances the state vector and returns the predicted bounding box estimate.
         """
+        # It's good that you already have this check for (self.kf.x[6] + self.kf.x[2]) <= 0
+        # which helps prevent issues related to scale or ratio becoming non-positive.
         if (self.kf.x[6] + self.kf.x[2]) <= 0:
             self.kf.x[6] *= 0.0
         self.kf.predict()
@@ -218,12 +229,6 @@ class Sort(object):
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks)
 
         # update matched trackers with assigned detections
-        """for t, trk in enumerate(self.trackers):
-            if t not in unmatched_trks:
-                d = matched[np.where(matched[:, 1] == t)[0], 0]
-                trk.update(dets[d, :][0])
-        """
-        # D Code:
         for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
                 # find all matched rows for this tracker index
@@ -233,7 +238,6 @@ class Sort(object):
                     d = int(matches_t[0, 0])
                     # update using the full detection vector [x1,y1,x2,y2,score]
                     trk.update(dets[d, :])
-        ##
 
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:

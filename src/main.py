@@ -169,7 +169,7 @@ def _get_interactive_boundary(src: str, use_box: bool, live: bool, device: int) 
 
 # --- CameraStream Class for Main Video Processing ---
 class CameraStream:
-    def __init__(self, device_index=0, resolution=(640, 480), framerate=30):
+    def __init__(self, device_index=0, resolution=(640, 480), framerate=15):
         global _picam2_stream_instance
         self.resolution = resolution
         self.framerate = framerate
@@ -242,6 +242,9 @@ class VideoStream:
 
 # --- Object Detection Function ---
 def _detect_person(detect_obj: Detect, frame: np.ndarray, confidence_thresh: float, iou_thresh: float) -> np.ndarray:
+    #trying to get fullint quantize to work
+    confidence_thresh = 0.01
+    
     boxes, scores, class_idx = detect_obj.detect(frame)
     if boxes is None or len(boxes) == 0:
         return np.empty((0, 5))
@@ -357,14 +360,15 @@ def main(
 
             # --- Display Time Measurement ---
             display_start_time = time.time()
-            #cv2.imshow("Object Detection and Tracking", frame)
-            #key = cv2.waitKey(1) & 0xFF 
+            if frame_display_count % 10 == 0:  #this increases speed but makes video low quality
+                cv2.imshow("Object Detection and Tracking", frame)
+            key = cv2.waitKey(1) & 0xFF 
             display_end_time = time.time()
             display_time = display_end_time - display_start_time
 
-            #if key == ord('q'):
-            #    break
-            
+            if key == ord('q'):
+               break
+            write_start_time = time.time()
             if writer is None: 
                 model_name_base = os.path.basename(model).split(".")[0]
                 video_name_base = 'live_feed' if live else os.path.basename(src).split(".")[0]
@@ -374,15 +378,18 @@ def main(
                 
                 fourcc_map = {"mp4": "MP4V", "avi": "XVID"}
                 fourcc = cv2.VideoWriter_fourcc(*fourcc_map.get(video_fmt, "XVID"))
-                writer = cv2.VideoWriter(output_video_path, fourcc, 25, (frame.shape[1], frame.shape[0]), True) 
+                writer = cv2.VideoWriter(output_video_path, fourcc, 15, (frame.shape[1], frame.shape[0]), True) 
                 print(f"\nOutput video saving to: {output_video_path}")
                 
             writer.write(frame) # Write the frame to the output video
-
+            
             frame_end_time = time.time() # End time for the entire frame processing
+            write_time = frame_end_time - write_start_time
             total_frame_time = frame_end_time - frame_start_time
             total_since_start = frame_end_time - initial_start_time
-            print(f"Frame {frame_display_count}: totalFrame: {total_frame_time:.4f}s | Inference: {inference_time:.4f}s | Display: {display_time:.4f}s | Since Start: {total_since_start} | FPS: {frame_display_count/total_since_start}")
+            
+            # print(f"frame{frame_display_count}: time: {total_frame_time:.4f}s | infer: {inference_time:.4f}s | display: {display_time:.4f}s | write: {write_time:.4f} | overall: {total_since_start:.4f} | FPS: {frame_display_count/total_since_start:.4f}")
+            print(f"frame{frame_display_count}: time: {total_frame_time:.4f}s | infer: {inference_time:.4f}s | display: {display_time:.4f}s | write: {write_time:.4f} | overall: {total_since_start:.4f} | instantFPS: {1/total_frame_time:.4f}")
     
         if total_frames_from_stream > 0 : print() 
 

@@ -4,6 +4,11 @@ pip install -r reqs.text
 python src/main.py --live --device 0 --model models/yolov5n-fp16.tflite --use-box --directions "{'inside': None, 'outside': None, 'total': None}" --video-fmt mp4 --interactive-freehand
 
 TODO: QUANTIZE WITH VIDEO.MP4, LOOK INTO FASTER VIDEO RECORD/PLAY 50FPS, BOX, MAYBE REID
+quantize is not finding any bbox
+need to adjust code to not only work for int8 quantize; also work for non quantize.
+explore why so slow when rendering; thread imshow
+
+
 
 libcamera-vid --level 4.2 --framerate 50 --width 1920 --height 1080 --codec libav -o video.mp4 --frames 1800 --denoise cdn_off -n
 
