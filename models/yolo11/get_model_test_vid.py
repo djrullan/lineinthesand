@@ -4,16 +4,13 @@ import time
 
 model = YOLO("yolo11n.pt")
 ################ EDIT BELOW ########
-format_str = 'torchscript'
-imgsz = 640
+format_str = 'ncnn'
+imgsz = (480,640) #jeep this here
 keras = False
 optimize = False
 half = False
 int8 = False
 dynamic = False
-simplify = True
-opset = None
-workspace = None
 nms = False
 batch = 1
 device = None
@@ -29,9 +26,6 @@ model.export(
     half=half,
     int8=int8,
     dynamic=dynamic,
-    simplify=simplify,
-    opset=opset,
-    workspace=workspace,
     nms=nms,
     batch=batch,
     device=device,
