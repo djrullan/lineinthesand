@@ -2,6 +2,15 @@ from ultralytics import YOLO
 import cv2
 import time
 
+
+# Load the YOLO11 model
+model = YOLO("yolo11n.pt")
+
+# Export the model to NCNN format
+# model.export(format="ncnn")
+model.export(format="ncnn", imgsz=(480,640), device="cpu", int8=True)  # creates '/yolo11n_ncnn_model'
+
+# Load the exported NCNN model
 ncnn_model = YOLO("./yolo11n_ncnn_model")
 
 input_video_source = "video.mp4"
