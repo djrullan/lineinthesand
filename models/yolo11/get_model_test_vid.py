@@ -2,31 +2,32 @@ from ultralytics import YOLO
 import cv2
 import time
 
+
 model = YOLO("yolo11n.pt")
 ################ EDIT BELOW ########
 format_str = 'ncnn'
 imgsz = (480,640) #keep this here
 half = False
-int8 = False
-dynamic = False
-nms = False
+# int8 = False
+# dynamic = False
+# nms = False
 batch = 1
-device = None
-data = 'coco8.yaml'
-fraction = 1.0
+device = 'cpu'
+# data = 'coco8.yaml'
+# fraction = 1.0
 ################ EDIT ABOVE ########
 
 model.export(
     format=format_str,
     imgsz=imgsz,
     half=half,
-    int8=int8,
-    dynamic=dynamic,
-    nms=nms,
+    # int8=int8,
+    # dynamic=dynamic,
+    # nms=nms,
     batch=batch,
     device=device,
-    data=data,
-    fraction=fraction
+    # data=data,
+    # fraction=fraction
 )
 
 # Load the exported NCNN model
@@ -83,7 +84,8 @@ print(f"Total time taken: {total_processing_time:.2f} seconds")
 
 with open('model_quant_logs.txt', 'a') as log_file:
     # Get the current timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now = time.time()
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", now)
 
     # Write the log data to the file
     log_file.write(f"--- Log Entry: {timestamp} ---\n")
