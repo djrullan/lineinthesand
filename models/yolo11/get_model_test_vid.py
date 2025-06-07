@@ -5,9 +5,7 @@ import time
 model = YOLO("yolo11n.pt")
 ################ EDIT BELOW ########
 format_str = 'ncnn'
-imgsz = (480,640) #jeep this here
-keras = False
-optimize = False
+imgsz = (480,640) #keep this here
 half = False
 int8 = False
 dynamic = False
@@ -21,8 +19,6 @@ fraction = 1.0
 model.export(
     format=format_str,
     imgsz=imgsz,
-    keras=keras,
-    optimize=optimize,
     half=half,
     int8=int8,
     dynamic=dynamic,
