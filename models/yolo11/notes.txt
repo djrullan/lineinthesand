@@ -1,0 +1,3 @@
+the default export for yolo11n ncnn does 200frame in 76. 
+export w exact image size and cpu does 200 in 61; looks perfect bbs.
+export w above and "half" quantization does 200 in 77; bb could use higher threshold
