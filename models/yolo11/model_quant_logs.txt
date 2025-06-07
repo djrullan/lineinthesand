@@ -1,0 +1,18 @@
+--- Log Entry: 2025-06-06 22:02:42 ---
+Format: ncnn
+Image Size: (480, 640)
+Half Precision (FP16): False
+Batch Size: 1
+Device: cpu
+Total Processing Time: 63.1016 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-06 22:07:01 ---
+Format: ncnn
+Image Size: (480, 640)
+Half Precision (FP16): True
+Batch Size: 1
+Device: cpu
+Total Processing Time: 61.3395 seconds
+--- End of Log Entry ---
+

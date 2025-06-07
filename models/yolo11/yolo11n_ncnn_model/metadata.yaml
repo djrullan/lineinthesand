@@ -1,6 +1,6 @@
 description: Ultralytics YOLO11n model trained on /usr/src/ultralytics/ultralytics/cfg/datasets/coco.yaml
 author: Ultralytics
-date: '2025-06-06T21:40:38.258328'
+date: '2025-06-06T22:05:52.442947'
 version: 8.3.149
 license: AGPL-3.0 License (https://ultralytics.com/license)
 docs: https://docs.ultralytics.com
@@ -93,5 +93,5 @@ names:
   79: toothbrush
 args:
   batch: 1
-  half: false
+  half: true
 channels: 3

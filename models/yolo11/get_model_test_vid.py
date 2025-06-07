@@ -7,7 +7,7 @@ model = YOLO("yolo11n.pt")
 ################ EDIT BELOW ########
 format_str = 'ncnn'
 imgsz = (480,640) #keep this here
-half = False
+half = True
 # int8 = False
 # dynamic = False
 # nms = False
@@ -84,26 +84,26 @@ print(f"Total time taken: {total_processing_time:.2f} seconds")
 
 with open('model_quant_logs.txt', 'a') as log_file:
     # Get the current timestamp
-    now = time.time()
+    now = time.localtime()
     timestamp = time.strftime("%Y-%m-%d %H:%M:%S", now)
 
     # Write the log data to the file
     log_file.write(f"--- Log Entry: {timestamp} ---\n")
     log_file.write(f"Format: {format_str}\n")
     log_file.write(f"Image Size: {imgsz}\n")
-    log_file.write(f"Keras: {keras}\n")
-    log_file.write(f"Optimize: {optimize}\n")
+    # log_file.write(f"Keras: {keras}\n")
+    # log_file.write(f"Optimize: {optimize}\n")
     log_file.write(f"Half Precision (FP16): {half}\n")
-    log_file.write(f"INT8 Quantization: {int8}\n")
-    log_file.write(f"Dynamic Axes: {dynamic}\n")
-    log_file.write(f"Simplify ONNX: {simplify}\n")
-    log_file.write(f"ONNX Opset: {opset}\n")
-    log_file.write(f"TensorRT Workspace (GiB): {workspace}\n")
-    log_file.write(f"Add NMS: {nms}\n")
+    # log_file.write(f"INT8 Quantization: {int8}\n")
+    # log_file.write(f"Dynamic Axes: {dynamic}\n")
+    # log_file.write(f"Simplify ONNX: {simplify}\n")
+    # log_file.write(f"ONNX Opset: {opset}\n")
+    # log_file.write(f"TensorRT Workspace (GiB): {workspace}\n")
+    # log_file.write(f"Add NMS: {nms}\n")
     log_file.write(f"Batch Size: {batch}\n")
     log_file.write(f"Device: {device}\n")
-    log_file.write(f"Dataset for INT8: {data}\n")
-    log_file.write(f"INT8 Calibration Fraction: {fraction}\n")
+    # log_file.write(f"Dataset for INT8: {data}\n")
+    # log_file.write(f"INT8 Calibration Fraction: {fraction}\n")
     log_file.write(f"Total Processing Time: {total_processing_time:.4f} seconds\n")
     log_file.write("--- End of Log Entry ---\n\n")
 
