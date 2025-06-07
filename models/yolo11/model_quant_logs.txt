@@ -14,5 +14,6 @@ Half Precision (FP16): True
 Batch Size: 1
 Device: cpu
 Total Processing Time: 61.3395 seconds
+bbs look fine
 --- End of Log Entry ---
 

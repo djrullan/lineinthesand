@@ -5,9 +5,9 @@ import time
 
 model = YOLO("yolo11n.pt")
 ################ EDIT BELOW ########
-format_str = 'ncnn'
+format_str = 'openvino'
 imgsz = (480,640) #keep this here
-half = True
+half = False
 # int8 = False
 # dynamic = False
 # nms = False
@@ -31,7 +31,8 @@ model.export(
 )
 
 # Load the exported NCNN model
-ncnn_model = YOLO("./yolo11n_ncnn_model")
+model_string = f"./yolo11n_{format_str}_model"
+ncnn_model = YOLO(model_string)
 
 input_video_source = "video.mp4"
 output_video_path = "annotated_video.mp4"
