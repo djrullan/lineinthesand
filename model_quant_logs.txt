@@ -1,0 +1,2 @@
+--- Log Entry: 2025-06-09 16:52:50 ---
+Model File: /home/djrul/lineinthesand/models/yolo11/yolo11n_fp16_openvino_model

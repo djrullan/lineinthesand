@@ -1,3 +1,6 @@
+python models/yolo11/video.py  --track --save-video 
+
+
 #UPDATED RUN ON PY
 source 3env/bin/activate
 pip install -r reqs.text

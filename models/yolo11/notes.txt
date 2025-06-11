@@ -1,3 +1,6 @@
+pyenv activate python38
+-------------------------
 the default export for yolo11n ncnn does 200frame in 76s. 
 export w exact image size and cpu does 200 in 61; looks perfect bbs.
 export w above and "half" quantization does 200 in 77; bb could use higher threshold
+openvino int8 quantization w/ first 300 frames of our video is 10fps but bounding boxes horrible

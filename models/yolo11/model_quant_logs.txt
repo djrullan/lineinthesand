@@ -17,3 +17,151 @@ Total Processing Time: 61.3395 seconds
 bbs look fine
 --- End of Log Entry ---
 
+--- Log Entry: 2025-06-06 22:17:25 ---
+Format: openvino
+Image Size: (480, 640)
+Half Precision (FP16): False
+Batch Size: 1
+Device: cpu
+Total Processing Time: 63.1262 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-06 22:20:13 ---
+Format: openvino
+Image Size: (480, 640)
+Half Precision (FP16): True
+Batch Size: 1
+Device: cpu
+Total Processing Time: 65.1473 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-06 22:57:45 ---
+Format: openvino
+Image Size: (640, 640)
+Half Precision (FP16): False
+INT8 Quantization: True     ###########actually using int8 for inference; slower...
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+Total Processing Time: 67.9629 seconds
+--- End of Log Entry ---
+
+##########################################
+USE 27W CHARGER INSTEAD OF 15 and remove opencv from loop
+###################################
+
+--- Log Entry: 2025-06-09 14:19:47 ---
+Format: openvino
+Image Size: (640, 640)
+Half Precision (FP16): False
+INT8 Quantization: True
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+Total Processing Time: 127.2584 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 14:35:40 ---
+Model File: yolov11_fp16_openvino_model
+Format: openvino
+Image Size: (480, 640)
+Half Precision (FP16): True
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.0963 seconds
+Inference FPS: 10.39
+Total Inference Loop Time: 40.5123 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 14:42:50 ---
+Model File: yolov11_fp32_openvino_model
+Format: openvino
+Image Size: (480, 640)
+Half Precision (FP16): False
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.0947 seconds
+Inference FPS: 10.55
+Total Inference Loop Time: 40.0523 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 14:46:47 ---
+Model File: yolo11n_ncnn_model
+Format: ncnn
+Image Size: (480, 640)
+Half Precision (FP16): False
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.1025 seconds
+Inference FPS: 9.76
+Total Inference Loop Time: 42.0917 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 15:42:42 ---
+Model File: yolo11n_ncnn_model
+Format: ncnn
+Image Size: (480, 640)
+Half Precision (FP16): False
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.1068 seconds
+Inference FPS: 9.37
+Total Inference Loop Time: 42.1021 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 15:46:01 ---
+Model File: yolo11n_ncnn_model
+Format: ncnn
+Image Size: (480, 640)
+Half Precision (FP16): True
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.0970 seconds
+Inference FPS: 10.31
+Total Inference Loop Time: 39.7324 seconds
+--- End of Log Entry ---
+
+--- Log Entry: 2025-06-09 15:51:35 ---
+Model File: yolo11n_openvino_model
+Format: openvino
+Image Size: (480, 640)
+Half Precision (FP16): True
+INT8 Quantization: False
+Batch Size: 1
+Device: cpu
+Dataset for INT8: coco8.yaml
+INT8 Calibration Fraction: 1
+--- Performance ---
+Frames Processed: 200
+Average Inference Time: 0.0987 seconds
+Inference FPS: 10.13
+Total Inference Loop Time: 38.4020 seconds
+--- End of Log Entry ---
+
