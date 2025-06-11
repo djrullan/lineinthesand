@@ -190,9 +190,9 @@ def run_inference_stream(model, streamer, track_mode=False, save_video=False):
                         cv2.circle(annotated_frame, (int(center_x), int(center_y)), 4, (0, 0, 255), -1)
                         if track_id not in counted_track_ids and cv2.pointPolygonTest(polygon, detection_point, False) >= 0:
                             people_counter += 1
+                            print(f"SECURITY ALERT: PERSON INSIDE ZONE")
                             counted_track_ids.add(track_id)
-                            cv2.circle(annotated_frame, (int(detection_point[0]), int(detection_point[1])), 7, (0, 255, 0), -1)
-                cv2.putText(annotated_frame, f"People Count: {people_counter}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 2)
+                cv2.putText(annotated_frame, f"Inside Count: {people_counter}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 255, 255), 2)
             else:
                 results = model(frame_bgr, verbose=False)
                 annotated_frame = results[0].plot()
